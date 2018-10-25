@@ -15,21 +15,18 @@ func SingleHash(in, out chan interface{}) {
 			out <- (DataSignerCrc32(data) + "~" + DataSignerCrc32(DataSignerMd5(data)))
 		}
 	}
-	close(out)
 }
 
 func MultiHash(in, out chan interface{}) {
-	result := ""
 	for recv := range in {
 		if data, ok := recv.(string); ok {
+			result := ""
 			for th := 0; th < 6; th++ {
 				result += DataSignerCrc32(strconv.Itoa(th) + data)
 			}
+			out <- result
 		}
 	}
-	out <- result
-	close(out)
-	result = ""
 }
 
 func CombineResults(in, out chan interface{}) {
@@ -41,35 +38,42 @@ func CombineResults(in, out chan interface{}) {
 	}
 	sort.Strings(ss)
 	out <- strings.Join(ss, "_")
-	close(out)
+}
+
+func do_work(worker job, wg *sync.WaitGroup, in, out chan interface{}) {
+	defer wg.Done()
+	defer close(out)
+	worker(in, out)
 }
 
 func ExecutePipeline(workers ...job) {
 	var wg = &sync.WaitGroup{}
-	in, out := make(chan interface{}, 100), make(chan interface{}, 100)
-	for _, work := range workers {
+	channels := make([]chan interface{}, len(workers)+1)
+	for i, _ := range channels {
+		channels[i] = make(chan interface{})
+	}
+	for i, worker := range workers {
+		in, out := channels[i], channels[i+1]
 		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			work(in, out)
-			close(out)
-		}()
-		in, out = out, make(chan interface{}, 100)
+		go do_work(worker, wg, in, out)
 	}
 	wg.Wait()
 }
 
 func main() {
-	workflow := make([]job, 4)
+	workflow := make([]job, 5)
 	workflow[0] = job(func(in, out chan interface{}) {
 		for i := 0; i < 2; i++ {
-			fmt.Println(i)
 			out <- i
 		}
-		close(out)
 	})
 	workflow[1] = job(SingleHash)
 	workflow[2] = job(MultiHash)
 	workflow[3] = job(CombineResults)
+	workflow[4] = job(func(in, out chan interface{}) {
+		for res := range in {
+			fmt.Println(res)
+		}
+	})
 	ExecutePipeline(workflow...)
 }
