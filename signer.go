@@ -20,13 +20,12 @@ func SingleHash(in, out chan interface{}) {
 	for recv := range in {
 		if recv, ok := recv.(int); ok {
 			data := strconv.Itoa(recv)
+			fmt.Println("SingleHash", data)
 			out1, out2 := make(chan string), make(chan string)
 			go func() {
-				fmt.Println("1", data)
 				out1 <- DataSignerCrc32(data)
 			}()
 			go func() {
-				fmt.Println("2", data)
 				out2 <- DataSignerCrc32(DataSignerMd5(data))
 			}()
 			out <- ((<-out1) + "~" + (<-out2))
@@ -37,6 +36,7 @@ func SingleHash(in, out chan interface{}) {
 func MultiHash(in, out chan interface{}) {
 	for recv := range in {
 		if data, ok := recv.(string); ok {
+			fmt.Println("MultiHash", data)
 			wg := &sync.WaitGroup{}
 			results := make([]result, 6)
 			res := ""
